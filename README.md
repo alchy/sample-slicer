@@ -105,15 +105,10 @@ python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced
 
 ### 2. Citlivější detekce pro tišší nahrávky
 ```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --threshold_db -50 --min_length 2
+python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --threshold_db -40 --min_length 5
 ```
 
-### 3. Méně citlivá detekce pro hlučné prostředí
-```bash
-python slicer.py --input-dir ./samples_in  --output-dir ./samples_out_sliced --threshold_db -35 --min_length 5
-```
-
-### 4. Debug režim s podrobným logováním
+### 3. Debug režim s podrobným logováním
 ```bash
 python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --log_level DEBUG
 ```
@@ -137,19 +132,6 @@ INFO: Uložen segment 4: recording001_slice_4_start_25600ms.wav
 INFO: Uložen segment 5: recording001_slice_5_start_42300ms.wav
 INFO: Zpracování dokončeno.
 ```
-
-## Optimalizace parametrů
-
-### Threshold_db
-- **-60 dB až -50 dB**: Pro velmi tiché nahrávky, studio podmínky
-- **-50 dB až -40 dB**: Standardní nahrávky s nízkým šumem
-- **-40 dB až -30 dB**: Hlučné prostředí, live nahrávky
-- **-30 dB a výše**: Velmi hlučné prostředí
-
-### Min_length
-- **1-2 sekundy**: Krátké segmenty, efekty, perkuse
-- **3-5 sekund**: Standardní segmenty, hudební fráze
-- **5+ sekund**: Dlouhé segmenty, kompletní věty/melodie
 
 ## Řešení problémů
 
