@@ -1,0 +1,17 @@
+# Audio Slicer Requirements
+# Core dependencies for audio processing and slicing
+
+# NumPy for numerical operations and audio data processing
+numpy>=1.21.0
+
+# tqdm for progress bars and status tracking
+tqdm>=4.62.0
+
+# Standard library modules used (no installation needed):
+# - os
+# - wave
+# - argparse
+# - logging
+# - sys
+# - pathlib
+# - json
