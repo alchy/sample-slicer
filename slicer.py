@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 import json
 
-
 # --- Konfigurace logování pro spolupráci s tqdm ---
 class TqdmStreamHandler(logging.StreamHandler):
     def emit(self, record):
@@ -22,7 +21,6 @@ class TqdmStreamHandler(logging.StreamHandler):
             self.flush()
         except Exception:
             self.handleError(record)
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -34,7 +32,6 @@ handler = TqdmStreamHandler()
 formatter = logging.Formatter('%(levelname)s: %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-
 
 # --- Statistiky zpracování ---
 class ProcessingStats:
@@ -60,7 +57,6 @@ class ProcessingStats:
         for format_name, count in self.audio_formats.items():
             logger.info(f"  {format_name}: {count} souborů")
 
-
 def validate_inputs(args):
     """Validuje vstupní parametry"""
     errors = []
@@ -83,7 +79,6 @@ def validate_inputs(args):
         return False
 
     return True
-
 
 def apply_fade(data, sample_rate, max_fade_ms=2.5):
     """Aplikuje fade-in a fade-out pro odstranění kliku (max 5ms)"""
@@ -110,7 +105,6 @@ def apply_fade(data, sample_rate, max_fade_ms=2.5):
             data[-fade_samples:] *= fade_out[:, np.newaxis]
 
     return data
-
 
 def detect_segments(data, fs, threshold_db=-40, window_size=0.05, min_segment_length=3):
     """
@@ -167,7 +161,6 @@ def detect_segments(data, fs, threshold_db=-40, window_size=0.05, min_segment_le
 
     return segments
 
-
 def trim_silence(data, fs, threshold_db, trim_window_size=0.01):
     """
     Ořeže ticho ze začátku a konce segmentu.
@@ -213,7 +206,6 @@ def trim_silence(data, fs, threshold_db, trim_window_size=0.01):
 
     return data[start_idx:end_idx], start_idx, end_idx
 
-
 def get_audio_info(file_path):
     """Získá informace o audio souboru"""
     try:
@@ -237,7 +229,6 @@ def get_audio_info(file_path):
     except Exception as e:
         logger.error(f"Nelze získat info o souboru {file_path}: {e}")
         return None
-
 
 def load_audio_data(file_path, audio_info):
     """Načte audio data s ohledem na formát"""
@@ -276,7 +267,6 @@ def load_audio_data(file_path, audio_info):
         logger.error(f"Chyba při načítání audio dat {file_path}: {e}")
         return None
 
-
 def save_audio_segment(data, output_path, audio_info, original_scale, original_dtype):
     """Uloží audio segment se zachováním původních parametrů"""
     try:
@@ -298,7 +288,6 @@ def save_audio_segment(data, output_path, audio_info, original_scale, original_d
     except Exception as e:
         logger.error(f"Chyba při ukládání {output_path}: {e}")
         return False
-
 
 def process_wav(input_path, output_dir, threshold_db, min_length, min_length_after_trim, trim_threshold_offset,
                 apply_fades, fade_ms, stats):
@@ -421,7 +410,6 @@ def process_wav(input_path, output_dir, threshold_db, min_length, min_length_aft
     logger.info(f"Uloženo {segments_saved}/{len(segments)} segmentů z {Path(input_path).name}")
     stats.files_processed += 1
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Vylepšený program pro rozdělení WAV souborů na segmenty. "
@@ -461,9 +449,9 @@ def main():
     # Vytvoření výstupního adresáře
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Nalezení WAV souborů
+    # Nalezení WAV souborů (opraveno pro case-insensitive bez duplicit)
     input_path = Path(args.input_dir)
-    wav_files = list(input_path.glob("*.wav")) + list(input_path.glob("*.WAV"))
+    wav_files = list(input_path.glob("*.[wW][aA][vV]"))
 
     if not wav_files:
         logger.error(f"V adresáři {args.input_dir} nebyly nalezeny žádné WAV soubory.")
@@ -513,7 +501,6 @@ def main():
     logger.info("Zpracování dokončeno.")
 
     return 0
-
 
 if __name__ == "__main__":
     exit(main())
