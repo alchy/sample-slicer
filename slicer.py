@@ -1,3 +1,9 @@
+##
+## verze trim OK
+##
+## fine_threshold = 0.25 | 0.1
+
+
 import os
 import sys
 import wave
@@ -170,7 +176,7 @@ def trim_silence(data, fs, threshold_db, window_size=0.01):
     return data[start:end], start, end
 
 # --- Fine-trim začátku podle náběhu energie ---
-def fine_trim_start(data, fs, fine_threshold=0.1, window_size=0.01, min_active_windows=2):
+def fine_trim_start(data, fs, fine_threshold=0.25, window_size=0.01, min_active_windows=2):
     """
     Trim začátku podle bloků zvýšené energie.
     - window_size: délka okna pro RMS v sekundách
