@@ -1,6 +1,8 @@
-# Návrh: pipeline nahrávka → banka samplů pro ithaca-legacy
+# Jak sample-slicer funguje
 
-Datum: 2026-09-21 · Stav: schválený návrh, čeká na implementační plán
+Živý popis implementace (as-built). Vznikl z návrhu z 2026-09-21 a průběžně se
+upravuje podle kódu; když se mění `detect`, `pitch`, `tuning` nebo `bank`, mění
+se i příslušná sekce tady. Nahrávací doporučení jsou v `RECORDING.md`.
 
 ## 1. Cíl a hranice
 
@@ -23,7 +25,7 @@ v ithace), multi-mic, round-robin, více velocity v jedné nahrávce.
 
 **ithaca-legacy se nemění.** Pouze načítá výsledný adresář; formát
 dynamic-velocity banky (složka `m###/`, libovolný název WAV, vrstvy řazené
-podle naměřeného peak RMS při načtení) je daný a tímto návrhem se neupravuje.
+podle naměřeného peak RMS při načtení) je daný a tento nástroj se mu přizpůsobuje.
 
 ## 2. Umístění a závislosti
 
@@ -59,34 +61,48 @@ aby šel testovat bez souborů.
 Analýza probíhá na mono mixu (0,5·(L+R)) po odečtení DC offsetu; do výstupu
 jde původní stereo.
 
-**Obálka.** RMS v rámcích 5 ms (nasazení) a 10 ms (zbytek), v dB.
+**Obálka.** RMS v rámcích 5 ms, v dB; pro rozhodnutí o konci navíc vyhlazená
+klouzavým mediánem 100 ms (`env_s`). Artefakty a nasazení se čtou ze surové
+obálky, protože medián by krátký transient smazal.
 
 **Lokální šumové dno.** Nahrávky nemají ploché ticho mezi tóny – basová struna
 zní 40 s a víc. Dno se proto neměří globálně, ale jako 5. percentil obálky
 v okně 2 s těsně před nasazením daného úderu. Všechny prahy jsou relativní
 k němu, pokud není řečeno jinak.
 
-**Nasazení.** Úder začíná tam, kde obálka během 30 ms vyskočí o víc než
-20 dB nad lokální dno. Od tohoto bodu se jde zpět k lokálnímu minimu obálky;
-začátek segmentu = toto minimum minus 5 ms pre-roll. Víc pre-rollu ne
-(latence při hraní). Fade-in 2 ms.
+**Nasazení.** Kandidát je tam, kde surová obálka během 30 ms vyskočí o víc než
+20 dB nad lokální dno. Skutečné nasazení je pak **první rámec, který se dostane
+do 10 dB od vrcholu následujících 200 ms** – tedy attack struny. Mechanika
+klávesy zní 40–60 ms před strunou o 20–30 dB slaběji; brát ji za začátek by
+přidalo latenci při hraní a posunulo analýzu výšky do šumu. Začátek segmentu =
+nasazení minus 5 ms pre-roll. Fade-in 2 ms.
 
 **Slité tóny.** Uvnitř aktivního úseku je další skok o víc než 12 dB během
-30 ms kandidát na nový úder. Rozdělí se, jen když vrchol nové části je do
-20 dB od vrcholu předchozího úderu a nová část trvá aspoň 0,5 s (odliší druhý
-tón od pádu dusítka).
+30 ms kandidát na nový úder. Rozdělí se, jen když (a) od posledního nasazení
+uplynulo víc než 200 ms (attack sám o sobě není nový úder), (b) nový vrchol
+převýší nedávné maximum obálky o 3 dB (zázněje basových sborů se houpou pod
+ním), (c) je do 20 dB od vrcholu předchozího úderu a (d) nová část drží aspoň
+0,5 s (odliší druhý tón od pádu dusítka).
 
 **Falešné údery.** Segment s vrcholem víc než 25 dB pod nejhlasitějším úderem
 souboru se zahodí (šumové kliky), zapíše se do reportu jako odmítnutý.
 
-**Konec segmentu** = první z událostí:
+**Konec segmentu** = první z událostí (kontrola začíná hned za vrcholem
+attacku, ne po pevné době):
 
-1. obálka klesne pod `end_level` (výchozí -60 dBFS, absolutní, parametr),
+1. vyhlazená obálka klesne pod `max(end_level, lokální dno + 6 dB)`
+   (`end_level` výchozí -60 dBFS, parametr) – lokální dno chrání před tím, aby
+   sample vlekl šum místnosti, když je v té části nahrávky nad -60 dB,
 2. artefakt uvolnění klávesy: po první sekundě dozvuku se lineární regresí
-   přes poslední 2 s sleduje sklon poklesu (dB/s); skok o víc než 8 dB nad
-   tuto čáru = pád kladívka/dusítka → konec v lokálním minimu těsně před ním,
+   přes poslední 2 s vyhlazené obálky sleduje sklon poklesu; **rychlý** skok
+   (> 8 dB během 30 ms v surové obálce) o víc než 8 dB nad regresní čáru = pád
+   kladívka/dusítka → konec v lokálním minimu 100 ms před ním. Pomalé +8 dB
+   houpání záznějů (stovky ms) pravidlo nespustí,
 3. horní limit délky (výchozí 30 s),
-4. nasazení dalšího úderu.
+4. nasazení dalšího úderu (segment končí před jeho pre-rollem).
+
+Každý segment nese i **tvrdý limit** (index nasazení dalšího úderu): render za
+něj nikdy nesáhne, ani umělým dozvukem.
 
 Surová data za bodem konce se nikdy nepoužijí (hráč mohl klávesu pustit,
 zatímco struna neslyšitelně zněla).
@@ -218,10 +234,14 @@ Všechny prahy z §3 a §4 jsou parametry s uvedenými výchozími hodnotami.
 
 ## 9. Testy (`tests/`, pytest)
 
-- **Pitch regrese:** fixtures = výřezy 0,6 s od nasazení každého úderu z 0180
-  a 0179 v původním formátu, jen mono (24 + 29 souborů, ~170 kB každý,
-  ~9 MB celkem), pravda v JSON. Laťka: 24/24 a 29/29 s ladicí křivkou,
-  žádná oktávová chyba.
+- **Pitch regrese:** fixtures = výřezy od nasazení každého úderu z 0180 a
+  0179 v původním formátu, jen mono (1,5 s pod C3 kvůli hlasům k = 8, jinak
+  0,6 s; 24 + 29 souborů, ~15 MB celkem), pravda v JSON. Laťka: správná
+  oktáva a do ±90 c u všech 53 (`tests/test_pitch_fixtures.py`); přiřazení
+  včetně ladicí křivky se ověřuje na reálných hodnotách v `test_tuning.py`
+  a end-to-end přes `analyze --truth` (53/53).
+- **GUI:** profily bez Qt (`test_profiles.py`), offscreen smoke test okna
+  (`test_gui_smoke.py`, přeskočí se bez PySide6).
 - **Detekce na syntetice:** signál se známými nasazeními, dvěma slitými tóny,
   umělým „thumpem" v dozvuku a kliky pod prahem; kontrola začátků (±5 ms),
   rozdělení, konce před thumpem, zahození kliků.
@@ -230,22 +250,3 @@ Všechny prahy z §3 a §4 jsou parametry s uvedenými výchozími hodnotami.
 - **Idempotence:** `build` dvakrát → identický adresář a index; změna
   parametru → staré soubory nahrazeny, cizí soubor zachován.
 - **Tuning:** křivka z kotev + přiřazení s +79 c v diskantu.
-
-## 10. Postup implementace (pořadí etap)
-
-1. `io` + `envelope` + `detect` + `tail` a přepojení `slicer.py` (generický
-   střih s korektním 24 bit, nasazením a dozvukem).
-2. `pitch` + `tuning` + `analyze --truth`, regresní fixtures, laťka 24/24 a
-   29/29.
-3. `bank` + `build` (original, ffmpeg převod, index, report, rejected,
-   overrides) + testy idempotence.
-4. Načtení `ap-petrof-dynamic` v ithaca-gui jako ruční kontrola; README
-   sample-sliceru popíše workflow.
-
-## 11. Poznámky pro další nahrávání (mimo software)
-
-- Vrcholy v 0180 jsou -10 až -24 dBFS; odstup od šumu u tichých tónů ~40 dB.
-  Nahrávat o 6–10 dB hlasitěji.
-- Bas zní přes 40 s; sample při -60 dBFS bude 20–25 s. Klávesu buď držet do
-  neslyšitelnosti, nebo pustit vědomě dřív (pravidlo artefaktu ji odřízne).
-- Vrchní oktáva je +46 až +79 c; piano se před finálním samplováním naladí.

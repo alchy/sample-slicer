@@ -9,7 +9,7 @@ surových WAV nahrávek (např. 96 kHz / 24 bit ze stereo páru mikrofonů) udě
 - zapíše banku ve formátu `m###/<hash>.wav` v originálu i v 48 kHz / 16 bit,
 - vede index (opakovaný běh nic nezdvojí) a report pro kontrolu člověkem.
 
-Návrh a zdůvodnění algoritmů: `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`.
+Jak to uvnitř funguje: `docs/algorithm.md`. Jak nahrávat, aby banka dopadla dobře: `RECORDING.md`.
 
 ## Funkce
 
