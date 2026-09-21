@@ -139,13 +139,17 @@ normalizace pásma, harmonická sumace jako jediný odhad (oktávové chyby A0�
 Piano není temperované přesně (Petrof: bas -30 až +9 c, střed ±20 c, A7–C8
 +46 až +79 c). Pevná tolerance ±50 c by horní klávesy zahodila.
 
-1. **První průchod:** údery, jejichž `midi_float` je do ±35 c od celé noty a
-   confidence je vysoká, se přiřadí rovnou (jisté kotvy).
+1. **Kotvy:** údery, jejichž `midi_float` je do ±35 c od celé noty a confidence je
+   vysoká. Každá kotva se ověří proti křivce z *ostatních* kotev (leave-one-out):
+   odchylka > 35 c = nejspíš sousední nota s velkou odchylkou → není kotva.
 2. **Ladicí křivka:** z kotev se vyhladí odchylka (centy) jako funkce MIDI
-   (klouzavý medián přes ±6 půltónů, lineární interpolace mezi kotvami,
-   konstantní extrapolace na krajích).
-3. **Druhý průchod:** ostatní údery se přiřadí k nejbližší notě po odečtení
-   křivky; přijme se odchylka do ±50 c od křivky. Mimo → `_rejected/`.
+   (klouzavý medián přes ±2 půltóny, lineární interpolace mezi kotvami,
+   **lineární extrapolace** z krajních dvou bodů se sklonem omezeným na
+   25 c/půltón – stretch v krajních oktávách roste strmě, konstanta by B7/C8
+   nechytila).
+3. **Postupné přiřazení:** ze zbývajících úderů se vždy vezme ten nejblíže
+   celé notě po odečtení křivky; přijme se do ±50 c od křivky, přidá se mezi
+   kotvy a křivka se přepočítá. Odmítnuté (mimo toleranci) → `_rejected/`.
 4. Rozsah klavíru 21–108; mimo → odmítnuto.
 5. Kolize (dvě přiřazení téže noty z jednoho souboru) se nezakazuje: jsou to
    opakované údery, tedy další vrstvy (ithaca je seřadí podle RMS).
