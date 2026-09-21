@@ -82,9 +82,8 @@ sample-slicer slice <vstupni_adresar> <vystupni_adresar>
 ```
 
 Výstup: `{zdroj}_slice_{NNN}_start_{ms}ms_dur_{ms}ms.wav` ve formátu vstupu.
-Zpětně kompatibilní `python slicer.py --input-dir A --output-dir B` funguje dál;
-staré přepínače prahů (`--threshold_db`, `--min_length`, …) se ignorují
-s varováním.
+`python slicer.py slice A B` je totéž bez instalace konzolového příkazu. Staré
+přepínače (`--input-dir`, `--threshold_db`, `--min_length`, …) už neexistují.
 
 ### Parametry detekce
 
