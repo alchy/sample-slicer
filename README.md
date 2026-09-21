@@ -1,207 +1,168 @@
-# Audio Slicer
+# sample-slicer
 
-Program pro automatické rozdělení WAV souborů na jednotlivé audio segmenty na základě detekce hlasitosti. Nástroj identifikuje části zvuku nad definovaným prahem hlasitosti a ukládá je jako samostatné WAV soubory s časovými timestampy. **Vylepšená verze** podporuje různé vzorkovací frekvence, bit depths a automatickou detekci mono/stereo formátů.
+Nástroj pro rozřezání nahrávek nástroje (typicky piana) na jednotlivé samply a
+pro stavbu banky pro sample player **ithaca-legacy**. Ze zdrojového adresáře
+surových WAV nahrávek (např. 96 kHz / 24 bit ze stereo páru mikrofonů) udělá:
+
+- ořezané údery s korektním nasazením a přirozeným dozvukem do nuly,
+- u každého úderu určí **notu jen z audia** (bez znalosti pořadí nahrávání),
+- zapíše banku ve formátu `m###/<hash>.wav` v originálu i v 48 kHz / 16 bit,
+- vede index (opakovaný běh nic nezdvojí) a report pro kontrolu člověkem.
+
+Návrh a zdůvodnění algoritmů: `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`.
 
 ## Funkce
 
-- **Automatická detekce segmentů**: Identifikuje aktivní audio segmenty nad nastavitelným prahem hlasitosti
-- **Inteligentní ořezávání**: Odstraňuje ticho na začátku a konci každého segmentu s konfigurovatelným prahem
-- **Podpora různých formátů**: 
-  - Vzorkovací frekvence: 44.1kHz, 48kHz a další
-  - Bit depth: 16-bit, 32-bit (částečně 24-bit)
-  - Automatická detekce mono/stereo
-- **Zachování originálních parametrů**: Výstupní soubory mají stejné audio parametry jako vstup
-- **Fade-in/fade-out**: Konfigurovatelné fade (výchozí 5ms) pro odstranění kliknutí
-- **Časové timestampy**: Výstupní soubory obsahují informaci o původní pozici v ms a délce
-- **Pokročilé funkce**:
-  - Preview mód pro testování nastavení
-  - Resume mód pro pokračování přerušeného zpracování
-  - Detailní statistiky zpracování
-- **Optimalizace výkonu**: Vektorizované výpočty pro rychlé zpracování velkých souborů
-- **Progress tracking**: Ukazatel průběhu zpracování s tqdm
+- **Detekce úderů** na RMS obálce s lokálním šumovým dnem (nahrávky klavíru
+  nemají ploché ticho mezi tóny – basová struna zní 40 s a víc).
+- **Nasazení = attack struny**, ne mechanika klávesy, která zní 40–60 ms před
+  ním (jinak by sample nesl latenci a odhad výšky seděl v šumu). Pre-roll 5 ms,
+  fade-in 2 ms.
+- **Dělení slitých tónů** a **ořez pádu kladívka/dusítka** po uvolnění klávesy;
+  obojí jen na transientu, aby zázněje basových sborů neplatily za nový úder.
+- **Konec samplu** se *vyrábí*: surová data končí na `end_level` (-60 dBFS,
+  resp. lokální dno + 6 dB) nebo před artefaktem, pak exponenciální dozvuk
+  navazující na naměřený sklon poklesu až do nuly. Dozvuk nikdy nesahá za
+  nasazení dalšího tónu.
+- **Odhad výšky**: autokorelace s normalizací pásma („zrychlení" signálu přes
+  k = ¼ … 16, bez převzorkování), hlasování přes k, spektrální důkaz parciál,
+  doladění na fundamentálu z plného sample rate. Na reálném Petrofu 53/53 not
+  správně od A0 po C8, bez oktávových chyb.
+- **Ladicí křivka**: piano není temperované přesně (Petrof: A7–C8 +46 až +79 c);
+  noty se přiřazují postupně vůči křivce vyhlazené z jistých kotev.
+- **WAV 16/24/32 bit**, mono i stereo, libovolný sample rate; výstup zachovává
+  formát vstupu. Float WAV se odmítne s hláškou.
+- Idempotentní `build` s indexem, `_rejected/` pro nejisté údery,
+  `overrides.json` pro ruční zásahy, `report.md`.
+
+## Instalace
+
+Python ≥ 3.11, numpy, tqdm; pro `build` navíc **ffmpeg** v PATH.
+
+```bash
+git clone https://github.com/alchy/sample-slicer.git
+cd sample-slicer
+python3.11 -m venv .venv
+.venv/bin/pip install -e .          # + '.[gui]' pro Qt GUI, '.[dev]' pro pytest
+```
 
 ## Použití
 
-Instalace (Python ≥ 3.11):
+### Stavba banky pro ithaca-legacy
 
 ```bash
-python3.11 -m venv .venv && .venv/bin/pip install -e .
+sample-slicer analyze <raw-dir> [--truth truth.json]      # dry-run, nic nezapisuje
+sample-slicer build <raw-dir> --original <orig> --out <bank>
 ```
 
-Generický střih (adresář WAV → ořezané údery s přirozeným dozvukem):
+- `<orig>/m###/<hash>.wav` – ořezané údery v původním formátu (např. 96 kHz / 24 bit)
+- `<bank>/m###/<hash>.wav` – 48 kHz / 16 bit (ffmpeg soxr, bez libsoxr swresample; + dither), tohle načítá ithaca
+- `<orig>/report.md` – tabulka všech úderů (čas, délka, peak, nota, centy, confidence), odmítnuté, vrstvy na notu, díry na klaviatuře, ladění
+- `<orig>/_rejected/` – údery bez spolehlivé noty (nízká confidence, mimo toleranci, mimo klavír)
+- `<orig>/.slicer-index.json` – idempotence: zdroj se stejným obsahem a parametry se přeskočí, nové nahrávky se přidají, změna parametrů nahradí staré soubory; cizí soubory v bance se nikdy nemažou
+- `<raw-dir>/overrides.json` – ruční zásahy: `{"rec.wav": {"skip": [17], "midi": {"3": 24}}}`
+- `--retune` – posune výšku každého úderu na temperované ladění (změnou poměru resamplingu); výchozí vypnuto
+
+Nota se určuje jen z audia. `--truth` slouží výhradně k měření přesnosti proti
+známému pořadí nahrávání (`analyze` vypíše ok / oktávová chyba / jiná po oktávách):
+
+```json
+{"260917_0180.wav": {"start": "A0", "pattern": "chromatic"},
+ "260917_0179.wav": {"start": "C4", "pattern": "major"},
+ "test.wav":        {"pattern": "list", "notes": ["C4", "E4", "G4"]}}
+```
+
+Opakované údery téže noty jsou další velocity vrstvy (ithaca je seřadí podle
+naměřeného RMS), pipeline nic nenormalizuje.
+
+### Generický střih (bez not)
 
 ```bash
 sample-slicer slice <vstupni_adresar> <vystupni_adresar>
 ```
 
-Zpětně kompatibilní vstup `python slicer.py --input-dir A --output-dir B` funguje
-dál; staré přepínače prahů se ignorují (nový algoritmus pracuje s lokálním
-šumovým dnem, viz spec `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`).
-Všechny parametry detekce vypíše `sample-slicer slice --help`.
+Výstup: `{zdroj}_slice_{NNN}_start_{ms}ms_dur_{ms}ms.wav` ve formátu vstupu.
+Zpětně kompatibilní `python slicer.py --input-dir A --output-dir B` funguje dál;
+staré přepínače prahů (`--threshold_db`, `--min_length`, …) se ignorují
+s varováním.
 
-## Stavba banky pro ithaca-legacy
+### Parametry detekce
 
-    sample-slicer analyze <raw-dir> [--truth truth.json]      # dry-run, nic nezapisuje
-    sample-slicer build <raw-dir> --original <orig> --out <bank>
+Všechny podpříkazy sdílejí přepínače (`--help` vypíše výchozí hodnoty):
 
-- `<orig>/m###/<hash>.wav` – ořezané údery v původním formátu (např. 96 kHz / 24 bit)
-- `<bank>/m###/<hash>.wav` – 48 kHz / 16 bit (ffmpeg soxr, bez libsoxr swresample; + dither), tohle načítá ithaca
-- `<orig>/report.md` – tabulka úderů, odmítnuté, vrstvy na notu, ladění
-- `<orig>/_rejected/` – údery bez spolehlivé noty
-- `<orig>/.slicer-index.json` – idempotence: opakovaný běh nic nezdvojí, nové nahrávky se přidají
-- `<raw-dir>/overrides.json` – ruční zásahy: `{"rec.wav": {"skip": [17], "midi": {"3": 24}}}`
+| přepínač | výchozí | význam |
+|---|---|---|
+| `--end-level-db` | -60 | úroveň (dBFS), pod kterou surová data končí; efektivně max(hodnota, lokální dno + 6 dB) |
+| `--tail-s` | 2 | délka umělého dozvuku do nuly |
+| `--max-len-s` | 30 | horní limit délky samplu |
+| `--onset-rise-db` / `--onset-rise-ms` | 20 / 30 | skok nad lokální dno, který znamená úder |
+| `--onset-peak-within-db` | 10 | nasazení = první rámec do X dB od vrcholu attacku |
+| `--preroll-ms` / `--fade-in-ms` | 5 / 2 | kolik vzít před nasazením, fade-in |
+| `--split-rise-db`, `--split-peak-within-db`, `--split-min-len-s` | 12, 20, 0.5 | dělení slitých tónů |
+| `--artifact-rise-db`, `--artifact-after-s`, `--artifact-window-s` | 8, 1, 2 | pád kladívka: skok nad regresní čáru dozvuku |
+| `--click-below-peak-db` | 25 | úder slabší o X dB než nejhlasitější v souboru = klik |
 
-Nota se určuje jen z audia (viz spec `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`).
-`--truth` slouží jen k měření přesnosti proti známému pořadí nahrávání
-(`{"rec.wav": {"start": "A0", "pattern": "chromatic"}}`, pattern chromatic / major / list).
-Vyžaduje `ffmpeg` v PATH.
+Příklad: kratší basové samply (dozvuk končí na -50 dB):
 
-## Požadavky
-
-```
-numpy
-tqdm
-```
-
-## Instalace
-
-1. Naklonujte repository:
 ```bash
-git clone <repository-url>
-cd audio-slicer
-```
-
-2. Nainstalujte závislosti:
-```bash
-pip install numpy tqdm
+sample-slicer build raw/ --original orig/ --out bank/ --end-level-db -50
 ```
 
 ## Formát vstupních souborů
 
-Program podporuje WAV soubory s následujícími specifikacemi:
-
-- **Bit depth**: 16-bit, 32-bit integer (částečně 24-bit s fallback)
-- **Kanály**: Mono nebo stereo (automatická detekce)
-- **Vzorkovací frekvence**: Libovolná (44.1 kHz, 48 kHz, 96 kHz, atd.)
-- **Délka**: Bez omezení
-
-## Formát výstupních souborů
-
-Rozdělené segmenty jsou uloženy s názvem ve formátu:
-
-```
-{original_name}_slice_{number}_start_{timestamp}ms_dur_{duration}ms_{format}.wav
-```
-
-### Příklady názvů souborů:
-- `piano01_slice_001_start_1250ms_dur_3500ms_48k_stereo.wav` - první segment začínající v čase 1.25s, trvající 3.5s, 48kHz stereo
-- `recording_slice_003_start_45680ms_dur_2100ms_44k_mono.wav` - třetí segment začínající v čase 45.68s, trvající 2.1s, 44.1kHz mono
-- `audio_slice_002_start_8900ms_dur_1800ms_48k_stereo_1.wav` - druhý segment s číslovaným sufixem při kolizi názvů
-
-### Formát informace v názvu:
-- `48k` = 48kHz vzorkovací frekvence
-- `44k` = 44.1kHz vzorkovací frekvence  
-- `mono` / `stereo` = počet kanálů
-
-## Algoritmus zpracování
-
-Popis detekce (nasazení, dělení slitých tónů, konec dozvuku, artefakt uvolnění
-klávesy, přirozený dozvuk do nuly) i odhadu výšky je ve specu
-`docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`.
-
-## Příklady použití
-
-### 1. Základní rozdělení s výchozími parametry
-```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced
-```
-
-### 2. Citlivější detekce pro tišší nahrávky s kratším fade
-```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --threshold_db -50 --min_length 2 --fade_ms 3
-```
-
-### 3. Zpracování se speciálními parametry ořezávání
-```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --trim_threshold_offset 15 --min_length_after_trim 1.0
-```
-
-### 4. Preview mód s debug informacemi
-```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --preview --log_level DEBUG
-```
-
-### 5. Resume zpracování bez fade efektů
-```bash
-python slicer.py --input-dir ./samples_in --output-dir ./samples_out_sliced --resume --no_fades
-```
+WAV PCM int 16 / 24 / 32 bit, mono nebo stereo, libovolný sample rate. Analýza
+běží na mono mixu 0,5·(L+R) po odečtení DC offsetu; do výstupu jde původní
+stereo. Float WAV není podporován (chyba pro daný soubor, pokračuje se dalším).
 
 ## Výstup programu
 
-Program zobrazuje průběh zpracování s podrobnými informacemi a statistikami:
-
 ```
-INFO: Nalezeno 3 WAV souborů k zpracování.
-Zpracovávám soubory: 100%|████████████| 3/3 [00:15<00:00,  5.12s/soubor]
-INFO: Načítám soubor: piano_recording.wav
-INFO: Formát: 48000Hz, 2 kanál(y), 16-bit
-INFO: Délka: 120.50s
-INFO: Detekuji segmenty...
-INFO: Nalezeno 8 segmentů.
-Segmenty z piano_recording.wav: 100%|████████████| 8/8 [00:03<00:00,  2.5segment/s]
-INFO: Uložen segment 1: piano_recording_slice_001_start_1250ms_dur_3500ms_48k_stereo.wav
-INFO: Uložen segment 2: piano_recording_slice_002_start_8900ms_dur_2100ms_48k_stereo.wav
-INFO: Segment 3 je po ořezání příliš krátký (0.385s), přeskakuji.
-INFO: Uloženo 7/8 segmentů z piano_recording.wav
-
-=== SOUHRN ZPRACOVÁNÍ ===
-INFO: Soubory: 3 úspěšné, 0 neúspěšné
-INFO: Segmenty: 19 vytvořené, 4 přeskočené
-INFO: Doba: 280.5s vstup → 95.2s výstup
-INFO: Formáty:
-INFO:   48000Hz_2ch_16bit: 2 souborů
-INFO:   44100Hz_1ch_16bit: 1 souborů
-INFO: Zpracování dokončeno.
+$ sample-slicer build raw/ --original orig/ --out bank/
+UPOZORNĚNÍ: ffmpeg bez libsoxr — resampling přes swresample (filter_size=256)
+260917_0179.wav: 29 zapsáno, 0 odmítnuto
+260917_0180.wav: 24 zapsáno, 0 odmítnuto
+Zapsáno 53 úderů, odmítnuto 0, přeskočeno zdrojů 0. Report: orig/report.md
 ```
+
+Druhý běh stejného příkazu: `Zapsáno 0 úderů, … přeskočeno zdrojů 2`.
 
 ## Řešení problémů
 
-### Běžné chyby
+- **Úder skončil v `_rejected/`** – v `report.md` je důvod: `low_confidence`
+  (šum, dva tóny naráz, příliš krátký úsek), `out_of_tolerance` (výška mimo
+  ±50 c od ladicí křivky), `out_of_range` (mimo A0–C8). Když víš, co to je,
+  přidej do `overrides.json` buď `skip`, nebo správné `midi`.
+- **Dva tóny v jednom samplu** – druhý úder byl tišší o víc než 20 dB, nebo
+  přišel dřív než 200 ms po prvním. Zkus `--split-peak-within-db 30`.
+- **Sample začíná pozdě / cvakne** – nasazení řídí `--onset-peak-within-db`
+  (větší hodnota = dřívější start) a `--preroll-ms`.
+- **Basové samply jsou dlouhé (20–30 s)** – to je skutečný dozvuk struny k
+  -60 dB. Kratší: `--end-level-db -50`.
+- **Šumové kliky se počítají jako údery** – jsou o víc než 25 dB pod
+  nejhlasitějším úderem? Pak je vyřadí `--click-below-peak-db`; jinak
+  `overrides.json`.
+- **`ffmpeg nenalezen`** – `build` ho potřebuje pro převod na 48 kHz / 16 bit
+  (`brew install ffmpeg`); `analyze` a `slice` bez něj fungují.
 
-**"Chyba při načítání souboru"**
-- Ověřte, že soubor je validní WAV formát
-- Zkontrolujte, zda není soubor poškozen
-- Program nyní podporuje různé bit depths - zkuste různé soubory
+## Vývoj
 
-**"Segment je po ořezání prázdný"**
-- Snižte `threshold_db` hodnotu pro citlivější detekci
-- Zkontrolujte `trim_threshold_offset` - možná je příliš vysoký
-- Použijte `--preview` pro analýzu před zpracováním
+```bash
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest -q
+```
 
-**"Nalezeno 0 segmentů"**
-- Audio je příliš tiché nebo práh je příliš vysoký
-- Zkuste `--threshold_db -60` nebo nižší
-- Ověřte formát souboru v preview módu
+Testy obsahují regresní laťku na výřezech z reálných nahrávek Petrof
+(`tests/fixtures/pitch`, 53 úderů A0–G#2 a C4–C8 s pravdou v `truth.json`),
+syntetické testy detekce (nasazení ±5 ms, slité tóny, thump, kliky), dozvuku,
+I/O 24 bit a idempotence stavby banky. Fixtures regeneruje
+`tools/make_fixtures.py <raw-dir> <truth.json> tests/fixtures/pitch`.
 
-**"Nepodporovaná bit depth"**
-- Program podporuje 16-bit a 32-bit
-- 24-bit soubory se automaticky převedou na 16-bit
-- Použijte audio editor pro konverzi nekompatibilních formátů
+Struktura balíčku `sample_slicer/`: `io` (WAV), `envelope` (obálka, dno,
+sklon), `detect` (segmenty), `tail` (dozvuk), `slicing` (generický střih),
+`pitch` (výška), `notes` (názvy not, pravda), `tuning` (ladicí křivka,
+přiřazení), `analyze` (dry-run), `bank` (stavba banky), `cli`.
 
-### Tipy pro optimální výsledky
+## GUI
 
-1. **Testování parametrů**: Použijte `--preview` pro otestování nastavení na malém vzorku
-2. **Kvalitní vstup**: Používejte čisté nahrávky s minimálním šumem
-3. **Správný práh**: Experimentujte s `threshold_db` pro vaše konkrétní nahrávky
-4. **Ořezávání**: Upravte `trim_threshold_offset` podle potřeby zachování/odstranění tichých částí
-5. **Fade délka**: Pro perkusní nástroje možná snižte `--fade_ms` na 2-3ms
-6. **Resume funkce**: Pro velké dávky použijte `--resume` při přerušení
-7. **Monitoring**: Používejte `DEBUG` log level pro diagnostiku problémů
-
-## Technické detaily
-
-- **Multi-format support**: Automatická detekce a zachování audio parametrů
-- **Adaptive processing**: Algoritmy se přizpůsobují vzorkovací frekvenci
-- **Vektorizované výpočty**: NumPy operace pro vysoký výkon
-- **Memory efficient**: Postupné zpracování bez načítání všech dat do paměti
-
+Qt GUI (`python slicergui.py`, vyžaduje `pip install -e '.[gui]'`) dělá
+generický střih se session managementem – viz `README_GUI.md`.

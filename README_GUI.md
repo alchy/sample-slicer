@@ -44,16 +44,23 @@ python slicergui.py
 - **Output Directory**: Where sliced segments are saved
 
 ### 2. Detection Parameters
-- **Threshold (dB)**: Audio level threshold for segment detection (-60 to 0)
-- **Min Segment Length**: Minimum duration for detected segments (0.1-10s)
-- **Min Length After Trim**: Minimum after silence removal (0.1-5s)
-- **Trim Threshold Offset**: Additional dB for trimming (+0 to +20)
+
+Střih dělá balíček `sample_slicer` (viz `README.md`, sekce Algoritmus / Parametry
+detekce). Ovládací prvky GUI se na něj mapují takto:
+
+- **Threshold (dB)**: úroveň, pod kterou surová data samplu končí (`end_level_db`,
+  výchozí -60; výsledek je max(hodnota, lokální šumové dno + 6 dB)). Dozvuk pak
+  plynule doběhne do nuly za 2 s.
+- **Min Segment Length**, **Min Length After Trim**, **Trim Threshold Offset**:
+  zůstávají v session kvůli kompatibilitě, nový algoritmus je **nepoužívá**
+  (nasazení, dělení tónů a konec se řídí lokálním dnem a transienty).
 
 ### 3. Processing Options
-- **Fade Length**: Fade-in/out duration to prevent clicks (0-50ms)
-- **Apply Fades**: Enable/disable fade processing
-- **Resume**: Skip already processed files
-- **Preview Mode**: Analyze only, no files created
+- **Fade Length**: fade-in po nasazení (výchozí 2 ms v CLI); fade-out nahradil
+  přirozený exponenciální dozvuk
+- **Apply Fades**: vypne fade-in
+- **Resume**: přeskočí existující výstupní soubory
+- **Preview Mode**: jen analýza, nic se nezapisuje
 - **Log Level**: DEBUG, INFO, WARNING, ERROR
 
 ### 4. Controls
@@ -164,8 +171,7 @@ sample-slicer/
 3. **Configure**:
    - Input: `C:/audio/drums_raw/`
    - Output: `C:/audio/drums_sliced/`
-   - Threshold: -45 dB
-   - Min Length: 3.0s
+   - Threshold: -60 dB (konec dozvuku)
 
 4. **Start Processing**:
    - 5 WAV files found
