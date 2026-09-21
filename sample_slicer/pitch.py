@@ -116,10 +116,20 @@ def estimate_pitch(x, sr, offset_s=0.04, win_nom_s=0.25, ks=(0.25, 0.5, 1, 2, 4,
         fm = float(np.median([v[0] for v in mem]))
         proms = [_prominence_db(mag, df, fm * h) for h in (1, 2, 3, 4)]
         ev = sum(p >= prominence_db for p in proms)
-        score = sum(v[1] ** 2 for v in mem) * (1.0 if ev >= min_evidence else 0.1)
+        # subharmonický kandidát (f0/2) má jen sudé parciály reálné → chceme i lichou (1. nebo 3.)
+        odd_ok = proms[0] >= prominence_db or proms[2] >= prominence_db
+        # spojitá váha: úder kladívka / rezonance místnosti nemá silnou harmonickou řadu
+        weight = min(1.0, sum(min(max(p, 0.0), 40.0) for p in proms) / 100.0)
+        score = sum(v[1] ** 2 for v in mem) * weight * (1.0 if (ev >= min_evidence and odd_ok) else 0.1)
         clusters.append((fm, score, len(mem), ev, proms))
     fm, score, n, ev, proms = max(clusters, key=lambda c: c[1])
-    total = sum(c[1] for c in clusters)
+    # confidence: vítěz proti konkurentům, kteří NEJSOU jeho celočíselným násobkem/podílem
+    # (sub/superharmonické shluky jsou u klavíru vždy přítomné a rozhoduje o nich ACF)
+    def related(fa, fb):
+        r = max(fa, fb) / min(fa, fb)
+        return any(abs(1200 * np.log2(r / m)) < cluster_cents for m in (1, 2, 3, 4))
+    unrelated = sum(c[1] for c in clusters if not related(c[0], fm))
+    confidence = score / (score + unrelated)
     f0 = fm
     for h, p in zip((1, 2, 3, 4), proms):
         if p >= prominence_db:
@@ -127,5 +137,5 @@ def estimate_pitch(x, sr, offset_s=0.04, win_nom_s=0.25, ks=(0.25, 0.5, 1, 2, 4,
             if fr:
                 f0 = fr / h
             break
-    return Pitch(f0_hz=float(f0), midi=float(midi_from_hz(f0)), confidence=float(score / total),
+    return Pitch(f0_hz=float(f0), midi=float(midi_from_hz(f0)), confidence=float(confidence),
                  n_votes=n, evidence=ev)

@@ -100,10 +100,9 @@ je bod konce + `tail_s`.
 ## 4. Odhad výšky (`pitch.py`)
 
 Ověřeno spikem na obou existujících nahrávkách (0180: A0–G#2 chromaticky,
-24 úderů; 0179: C dur C4–C8, 29 úderů). Výsledek spiku: 24/24 a 27/29
-správně přiřazeno s pevnou tolerancí ±50 c; zbylé dva údery (B7, C8) jsou
-změřené správně, ale piano je tam +79/+73 c – to řeší ladicí křivka (§5),
-laťka 29/29 se ověří testem.
+24 úderů; 0179: C dur C4–C8, 29 úderů). Výsledek implementace (`analyze
+--truth`): 53/53 správně, 0 oktávových chyb; B7 a C8 jsou +79/+73 c (piano),
+což řeší ladicí křivka (§5).
 
 Analyzuje se úsek od nasazení + 40 ms.
 
@@ -118,16 +117,25 @@ Analyzuje se úsek od nasazení + 40 ms.
    čtverců vah.
 3. **Spektrální důkaz.** Spektrum 0,5 s od nasazení (Hann, zero-padding 8×).
    Pro každý shluk se spočítá prominence parciál 1–4 (max v ±60 c kolem h·f0
-   minus medián log-spektra v ±1 oktávě). Shluk s méně než dvěma prominentními
-   parciálami (≥ 12 dB) dostane skóre ×0,1. Tím vypadne úder kladívka
-   (~90 Hz), který u krátkých diskantových tónů vítězí v autokorelaci.
-   Fundamentál se nevyžaduje (u A0 je v spektru ~1 dB nad okolím).
+   minus medián log-spektra v ±1 oktávě). Shluk musí mít aspoň dvě prominentní
+   parciály (≥ 12 dB) **a z nich aspoň jednu lichou** (1. nebo 3.; subharmonický
+   kandidát f0/2 má reálné jen sudé), jinak skóre ×0,1. Navíc spojitá váha
+   min(1, Σ clip(prominence, 0, 40) / 100): úder kladívka a rezonance místnosti
+   (~110 Hz, u krátkých diskantových tónů vítězí v autokorelaci) nemají silnou
+   harmonickou řadu. Fundamentál se nevyžaduje (u A0 je v spektru ~1 dB nad
+   okolím).
 4. **Doladění.** Konečné f0 se čte spektrálně z plného sample rate: nejnižší
    prominentní parciála h, vrchol v ±150 c kolem h·f0, parabolická interpolace
    v log-magnitudě, děleno h. Vyšší parciály se nepoužijí, když je fundamentál
    vidět (nehармonicita v diskantu posouvá 2. parciálu o +40 až +80 c).
-5. **Confidence** = skóre vítěze / součet skóre všech shluků, spolu s počtem
-   souhlasících k a prominencí; hlásí se v reportu.
+5. **Confidence** = skóre vítěze / (skóre vítěze + Σ skóre shluků, které nejsou
+   jeho celočíselným násobkem či podílem 2–4). Sub/superharmonické shluky jsou u
+   klavíru vždy přítomné a rozhoduje o nich autokorelace; do nejistoty se počítá
+   jen nesouvisející konkurence (šum, rezonance, druhý tón). Na reálných datech
+   nejnižší 0,62; práh přijetí 0,5.
+
+Analyzuje se jen úsek nasazení → konec segmentu (bez umělého dozvuku: v něm u
+krátkých tónů přežívá jen rezonance).
 
 Výstup: `Pitch(f0_hz, midi_float, confidence, n_votes, evidence)`.
 

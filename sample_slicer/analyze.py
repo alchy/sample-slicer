@@ -27,7 +27,9 @@ def analyze_file(path, params: DetectParams, tail_s: float, truth_entry: dict | 
                  tuning: TuningParams = TuningParams()) -> tuple[list[HitRow], list[Segment], list[Slice]]:
     """Vrátí (řádky, odmítnuté kliky, slices) — slices se vrací, aby build nemusel číst zdroj dvakrát."""
     slices, rejected = slice_file(path, params, tail_s)
-    pitches = [estimate_pitch(to_mono(s.audio)[s.segment.onset - s.segment.start:], s.sr) for s in slices]
+    # výška jen z úseku nasazení..konec (bez umělého dozvuku: v něm u krátkých tónů přežívá jen rezonance)
+    pitches = [estimate_pitch(to_mono(s.audio)[s.segment.onset - s.segment.start: s.segment.end - s.segment.start], s.sr)
+               for s in slices]
     assignments, _ = assign_notes(pitches, tuning)
     truths = expand_truth(truth_entry, len(slices)) if truth_entry else [None] * len(slices)
     rows = [HitRow(Path(path).name, s.index, s.segment.onset / s.sr, len(s.audio) / s.sr, s.segment.peak_db,
