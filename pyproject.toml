@@ -15,9 +15,10 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 sample-slicer = "sample_slicer.cli:main"
+sample-slicer-gui = "slicergui.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["sample_slicer*"]
+include = ["sample_slicer*", "slicergui*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

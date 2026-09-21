@@ -163,5 +163,6 @@ přiřazení), `analyze` (dry-run), `bank` (stavba banky), `cli`.
 
 ## GUI
 
-Qt GUI (`python slicergui.py`, vyžaduje `pip install -e '.[gui]'`) dělá
-generický střih se session managementem – viz `README_GUI.md`.
+`sample-slicer-gui` (po `pip install -e '.[gui]'`) je Qt okno nad týmž balíčkem:
+profil na banku, režim banka / střih, složky, pět praktických parametrů,
+tlačítka Analyzovat / Sestavit banku / Otevřít report a log. Viz `README_GUI.md`.

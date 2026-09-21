@@ -1,258 +1,37 @@
-# Audio Sample Slicer GUI
+# sample-slicer GUI
 
-Grafické rozhraní pro zpracování audio vzorků s session managementem a hash-based caching.
+Qt okno nad stejným balíčkem `sample_slicer`, které používá CLI. Dělá totéž co
+`sample-slicer analyze / build / slice`, jen s uloženými profily a logem v okně.
 
-## 📦 Installation
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-```
-
-**Requirements:**
-- Python 3.8+
-- PySide6 (Qt6 GUI framework)
-- platformdirs (OS-specific paths)
-- numpy, tqdm (audio processing)
-
----
-
-## 🚀 Usage
-
-### Launch GUI Application
+## Spuštění
 
 ```bash
-python slicergui.py
+.venv/bin/pip install -e '.[gui]'      # PySide6 + platformdirs
+sample-slicer-gui                      # nebo: python -m slicergui
 ```
 
-### First Start
+## Okno shora dolů
 
-1. **Session Dialog** appears:
-   - **Left panel**: Select existing session
-   - **Right panel**: Create new session
+1. **Profil** – pojmenovaná sada složek a parametrů (typicky jeden profil na
+   banku). *Uložit*, *Uložit jako…*, *Smazat*. Profily jsou v jednom JSON
+   souboru v uživatelské konfiguraci (`platformdirs`, na macOS
+   `~/Library/Application Support/sample-slicer/profiles.json`); při startu se
+   načte naposledy uložený.
+2. **Režim** – *Banka pro ithaca* (analyze / build) nebo *Generický střih*
+   (slice). Podle režimu se ukážou jen relevantní složky a tlačítka.
+3. **Složky** – Zdrojové nahrávky; pro banku Original (96 kHz / 24 bit +
+   report + index) a Banka pro ithaca (48 kHz / 16 bit); pro střih Výstup.
+   Ke každé je nápověda v poli.
+4. **Parametry** – jen ty, které se v praxi ladí: Konec dozvuku (dBFS),
+   Umělý dozvuk (s), Max délka samplu (s), Pre-roll (ms), Fade-in (ms) a
+   přepínač *Doladit na temperované ladění*. Ostatní prahy detekce mají
+   výchozí hodnoty ze specu; kdo je potřebuje, použije CLI (`--help`).
+5. **Akce** – *Analyzovat (dry-run)* vypíše tabulku úderů (čas, délka, peak,
+   nota, centy, confidence, verdikt) do logu a nic nezapisuje; *Sestavit banku*
+   spustí celý workflow; *Otevřít report* otevře `report.md` z Original.
+   Ve střihu je místo toho *Rozřezat*.
+6. **Log** – průběh úlohy; úloha běží v samostatném vlákně, okno zůstává
+   responzivní.
 
-2. Enter session name and click **Create** or select existing and click **Load**
-
-3. **Main Window** opens with your session parameters
-
----
-
-## 🎛️ Main Window Features
-
-### 1. Folders
-- **Input Directory**: WAV files to process
-- **Output Directory**: Where sliced segments are saved
-
-### 2. Detection Parameters
-
-Střih dělá balíček `sample_slicer` (viz `README.md`, sekce Algoritmus / Parametry
-detekce). Ovládací prvky GUI se na něj mapují takto:
-
-- **Threshold (dB)**: úroveň, pod kterou surová data samplu končí (`end_level_db`,
-  výchozí -60; výsledek je max(hodnota, lokální šumové dno + 6 dB)). Dozvuk pak
-  plynule doběhne do nuly za 2 s.
-- **Min Segment Length**, **Min Length After Trim**, **Trim Threshold Offset**:
-  zůstávají v session kvůli kompatibilitě, nový algoritmus je **nepoužívá**
-  (nasazení, dělení tónů a konec se řídí lokálním dnem a transienty).
-
-### 3. Processing Options
-- **Fade Length**: fade-in po nasazení (výchozí 2 ms v CLI); fade-out nahradil
-  přirozený exponenciální dozvuk
-- **Apply Fades**: vypne fade-in
-- **Resume**: přeskočí existující výstupní soubory
-- **Preview Mode**: jen analýza, nic se nezapisuje
-- **Log Level**: DEBUG, INFO, WARNING, ERROR
-
-### 4. Controls
-- **START PROCESSING**: Begin processing WAV files
-- **STOP**: Cancel current processing
-- **Progress Bars**:
-  - Total progress across all files
-  - Current file progress
-
-### 5. Log Output
-- Real-time processing logs
-- Color-coded by severity
-- Scrollable with auto-cleanup
-
----
-
-## 💾 Session Management
-
-### What is a Session?
-
-Sessions store:
-- Input/output folder paths
-- All processing parameters
-- File processing cache (MD5 hashes)
-- UI preferences
-
-### Session Persistence
-
-**Windows:**
-```
-C:\Users\{user}\AppData\Local\LordAudio\AudioSlicerSessions\
-├── session-MyProject.json
-├── session-MyProject.json.backup
-└── ...
-```
-
-**macOS:**
-```
-~/Library/Application Support/LordAudio/AudioSlicerSessions/
-```
-
-**Linux:**
-```
-~/.local/share/LordAudio/AudioSlicerSessions/
-```
-
-### Session Operations
-
-- **Switch Session**: Change to another session
-- **Save Session**: Manually save (auto-save enabled by default)
-- **Delete Session**: Remove session from Session Dialog
-
----
-
-## 🔍 Hash-Based Caching
-
-The application tracks processed files using MD5 hashes:
-
-- **First processing**: File hash calculated and stored
-- **Re-processing**: Hash compared to detect file changes
-- **Cache data**: Filename, format, segments created, timestamp
-
-**Benefits:**
-- Faster re-processing detection
-- Track processing history
-- Identify duplicate files
-
----
-
-## 📁 Project Structure
-
-```
-sample-slicer/
-├── slicer.py                    # Original CLI tool (unchanged)
-├── slicergui.py                 # GUI entry point
-├── requirements.txt             # Dependencies
-│
-└── slicergui/
-    ├── config/
-    │   ├── __init__.py          # SESSIONS_DIR (platformdirs)
-    │   └── app_config.py        # Constants and defaults
-    │
-    ├── domain/
-    │   └── interfaces/
-    │       └── session_repository.py  # Repository interface (ABC)
-    │
-    ├── infrastructure/
-    │   └── persistence/
-    │       └── session_repository_impl.py  # JSON implementation
-    │
-    ├── logic.py                 # Audio processing core
-    ├── session_manager.py       # Session CRUD + hash cache
-    ├── worker.py                # QThread for async processing
-    └── gui.py                   # PySide6 UI components
-```
-
----
-
-## 🎯 Workflow Example
-
-1. **Start application**
-   ```bash
-   python slicergui.py
-   ```
-
-2. **Create session** "DrumSamples"
-
-3. **Configure**:
-   - Input: `C:/audio/drums_raw/`
-   - Output: `C:/audio/drums_sliced/`
-   - Threshold: -60 dB (konec dozvuku)
-
-4. **Start Processing**:
-   - 5 WAV files found
-   - Real-time progress shown
-   - Logs display detection info
-
-5. **Results**:
-   - 23 segments created
-   - Session auto-saved with cache
-
-6. **Next time**:
-   - Load "DrumSamples" session
-   - All parameters restored
-   - Add more files, resume processing
-
----
-
-## 🛠️ CLI Tool (Original)
-
-The original CLI `slicer.py` remains **unchanged** and fully functional:
-
-```bash
-python slicer.py \
-  --input-dir samples_in \
-  --output-dir samples_out \
-  --threshold_db -45 \
-  --min_length 3
-```
-
-See `slicer.py --help` for all CLI options.
-
----
-
-## 🔧 Architecture Highlights
-
-### Clean Architecture Pattern
-- **Domain Layer**: Business logic interfaces
-- **Application Layer**: Session manager, use cases
-- **Infrastructure Layer**: Persistence (JSON with backup)
-- **Presentation Layer**: PySide6 GUI
-
-### Repository Pattern
-- Abstract `ISessionRepository` interface
-- Concrete `JsonSessionRepository` implementation
-- Easy to swap backends (SQL, Redis, etc.)
-
-### Threading
-- `QThread` worker for async processing
-- GUI remains responsive during operations
-- Signals for progress updates
-
-### Auto-Save
-- Parameters auto-saved after 500ms inactivity
-- Session saved on window close
-- Backup mechanism prevents data loss
-
----
-
-## 📝 Logging
-
-Logs are saved to:
-```
-~/.audioslicer/slicergui.log
-```
-
-Console also shows INFO level messages.
-
----
-
-## 🤝 Contributing
-
-- Original CLI: `slicer.py`
-- GUI Extension: `slicergui/` package
-- Both tools share core processing logic
-
----
-
-## 📄 License
-
-Part of the LordAudio sample-slicer project.
-
----
-
-**Enjoy slicing! 🎵**
+Ruční zásahy (`overrides.json` ve zdrojové složce) a idempotence (index
+v Original) fungují stejně jako v CLI – viz `README.md`.
