@@ -75,6 +75,18 @@ známému pořadí nahrávání (`analyze` vypíše ok / oktávová chyba / jin�
 Opakované údery téže noty jsou další velocity vrstvy (ithaca je seřadí podle
 naměřeného RMS), pipeline nic nenormalizuje.
 
+### Přidání nových nahrávek
+
+Nové WAV soubory stačí zkopírovat do zdrojového adresáře a spustit `build`
+znovu (CLI výše, nebo v GUI tlačítko *Sestavit banku*). Už zpracované zdroje
+se přeskočí, nové údery se do banky přidají, `report.md` ukáže zbývající díry
+na klaviatuře. Ithaca se nepřekládá ani nerestartuje, jen v ní banku znovu
+načteš.
+
+> `build` je podpříkaz sample-sliceru, ne cíl Makefilu. `make build`
+> v ithaca-legacy překládá engine a GUI (C++/CMake) a s bankou nemá nic
+> společného.
+
 ### Generický střih (bez not)
 
 ```bash
