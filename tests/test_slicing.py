@@ -36,3 +36,13 @@ def test_cli_slice(tmp_path):
     out = tmp_path / "out"
     assert main(["slice", str(src), str(out)]) == 0
     assert len(list(out.glob("*.wav"))) == 2
+
+import pytest
+from sample_slicer.bank import ffmpeg_available
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg chybí")
+def test_cli_build(tmp_path):
+    src = tmp_path / "src"; src.mkdir(); make_file(src / "rec.wav")
+    assert main(["build", str(src), "--original", str(tmp_path / "o"), "--out", str(tmp_path / "b")]) == 0
+    assert len(list((tmp_path / "o").glob("m*/*.wav"))) == 2
+    assert len(list((tmp_path / "b").glob("m*/*.wav"))) == 2

@@ -39,6 +39,23 @@ dál; staré přepínače prahů se ignorují (nový algoritmus pracuje s lokál
 šumovým dnem, viz spec `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`).
 Všechny parametry detekce vypíše `sample-slicer slice --help`.
 
+## Stavba banky pro ithaca-legacy
+
+    sample-slicer analyze <raw-dir> [--truth truth.json]      # dry-run, nic nezapisuje
+    sample-slicer build <raw-dir> --original <orig> --out <bank>
+
+- `<orig>/m###/<hash>.wav` – ořezané údery v původním formátu (např. 96 kHz / 24 bit)
+- `<bank>/m###/<hash>.wav` – 48 kHz / 16 bit (ffmpeg soxr, bez libsoxr swresample; + dither), tohle načítá ithaca
+- `<orig>/report.md` – tabulka úderů, odmítnuté, vrstvy na notu, ladění
+- `<orig>/_rejected/` – údery bez spolehlivé noty
+- `<orig>/.slicer-index.json` – idempotence: opakovaný běh nic nezdvojí, nové nahrávky se přidají
+- `<raw-dir>/overrides.json` – ruční zásahy: `{"rec.wav": {"skip": [17], "midi": {"3": 24}}}`
+
+Nota se určuje jen z audia (viz spec `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`).
+`--truth` slouží jen k měření přesnosti proti známému pořadí nahrávání
+(`{"rec.wav": {"start": "A0", "pattern": "chromatic"}}`, pattern chromatic / major / list).
+Vyžaduje `ffmpeg` v PATH.
+
 ## Požadavky
 
 ```

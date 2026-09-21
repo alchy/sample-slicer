@@ -171,7 +171,9 @@ Report vypíše odchylku každého úderu od temperovaného ladění i od křivk
   MD5 obsahu souboru (stejná konvence jako `make_dynamic_bank.sh`).
 - `<out>/m###/<hash>.wav`: ffmpeg
   `-af aresample=48000:resampler=soxr:precision=28:dither_method=triangular
-  -c:a pcm_s16le`; hash z výsledného souboru.
+  -c:a pcm_s16le`; hash z výsledného souboru. Když ffmpeg nemá libsoxr
+  (Homebrew build), použije se swresample s `filter_size=256:cutoff=0.98`
+  (ověří se jednou při startu, hlásí se varováním, engine je zapsán v indexu).
 - Volitelně `--retune`: před převodem se výška posune o naměřenou odchylku od
   temperovaného ladění změnou poměru resamplingu (vypnuto výchozí; piano se
   před finálním samplováním ladí).

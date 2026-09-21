@@ -40,6 +40,24 @@ def cmd_analyze(args) -> int:
     return 0
 
 
+def cmd_build(args) -> int:
+    import json
+    from pathlib import Path
+    from .bank import build_bank
+    from .tuning import TuningParams
+    ov_path = Path(args.overrides) if args.overrides else Path(args.src_dir) / "overrides.json"
+    overrides = json.loads(ov_path.read_text()) if ov_path.exists() else None
+    try:
+        res = build_bank(args.src_dir, args.original, args.out, detect_params_from_args(args), args.tail_s,
+                         TuningParams(), retune=args.retune, overrides=overrides)
+    except RuntimeError as e:
+        print(f"CHYBA: {e}", file=sys.stderr)
+        return 2
+    print(f"Zapsáno {res.written} úderů, odmítnuto {res.rejected}, přeskočeno zdrojů {res.skipped_sources}. "
+          f"Report: {Path(args.original) / 'report.md'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sample-slicer")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -52,6 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--truth", default=None, help="JSON se známým pořadím nahrávání (jen k měření přesnosti)")
     add_detect_args(a)
     a.set_defaults(func=cmd_analyze)
+    b = sub.add_parser("build", help="celý workflow: zdroje → original (96k/24b) → out (48k/16b)")
+    b.add_argument("src_dir")
+    b.add_argument("--original", required=True); b.add_argument("--out", required=True)
+    b.add_argument("--retune", action="store_true", help="dolaď výšku na temperované ladění při převodu")
+    b.add_argument("--overrides", default=None, help="JSON s ručními zásahy (výchozí <src>/overrides.json)")
+    add_detect_args(b)
+    b.set_defaults(func=cmd_build)
     return p
 
 
