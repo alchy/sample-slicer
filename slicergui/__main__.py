@@ -9,6 +9,7 @@ def main() -> int:
     app.setApplicationName("sample-slicer")
     win = MainWindow()
     win.show()
+    win.raise_(); win.activateWindow()          # macOS: okno spuštěné z terminálu jinak zůstane vzadu
     return app.exec()
 
 
