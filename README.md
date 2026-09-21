@@ -58,9 +58,9 @@ sample-slicer build <raw-dir> --original <orig> --out <bank>
 - `<orig>/m###/<hash>.wav` – ořezané údery v původním formátu (např. 96 kHz / 24 bit)
 - `<bank>/m###/<hash>.wav` – 48 kHz / 16 bit (ffmpeg soxr, bez libsoxr swresample; + dither), tohle načítá ithaca
 - `<orig>/report.md` – tabulka všech úderů (čas, délka, peak, nota, centy, confidence), odmítnuté, vrstvy na notu, díry na klaviatuře, ladění
-- `<orig>/_rejected/` – údery bez spolehlivé noty (nízká confidence, mimo toleranci, mimo klavír)
+- `<orig>/_rejected/` – údery bez spolehlivé noty (`low_confidence`, `out_of_tolerance`, `out_of_range`) a údery přeskočené přes overrides (`override`); název `<zdroj>_<index>_<důvod>.wav`
 - `<orig>/.slicer-index.json` – idempotence: zdroj se stejným obsahem a parametry se přeskočí, nové nahrávky se přidají, změna parametrů nahradí staré soubory; cizí soubory v bance se nikdy nemažou
-- `<raw-dir>/overrides.json` – ruční zásahy: `{"rec.wav": {"skip": [17], "midi": {"3": 24}}}`
+- `<raw-dir>/overrides.json` – ruční zásahy: `{"rec.wav": {"skip": [17], "midi": {"3": 24}}}` (index úderu je `#` z reportu); jiný soubor přes `--overrides cesta.json`
 - `--retune` – posune výšku každého úderu na temperované ladění (změnou poměru resamplingu); výchozí vypnuto
 
 Nota se určuje jen z audia. `--truth` slouží výhradně k měření přesnosti proti
@@ -112,6 +112,9 @@ Všechny podpříkazy sdílejí přepínače (`--help` vypíše výchozí hodnot
 | `--split-rise-db`, `--split-peak-within-db`, `--split-min-len-s` | 12, 20, 0.5 | dělení slitých tónů |
 | `--artifact-rise-db`, `--artifact-after-s`, `--artifact-window-s` | 8, 1, 2 | pád kladívka: skok nad regresní čáru dozvuku |
 | `--click-below-peak-db` | 25 | úder slabší o X dB než nejhlasitější v souboru = klik |
+| `--min-len-s` | 0.3 | kratší úsek (surová data) = klik, jde do odmítnutých |
+| `--onset-look-ms` | 200 | okno za kandidátem nasazení, ve kterém se hledá vrchol attacku; zároveň refrakterní doba pro dělení tónů |
+| `--hop-ms` / `--smooth-ms` | 5 / 100 | krok RMS obálky; délka mediánového vyhlazení pro rozhodnutí o konci |
 
 Příklad: kratší basové samply (dozvuk končí na -50 dB):
 
@@ -165,13 +168,15 @@ Druhý běh stejného příkazu: `Zapsáno 0 úderů, … přeskočeno zdrojů 2
 Testy obsahují regresní laťku na výřezech z reálných nahrávek Petrof
 (`tests/fixtures/pitch`, 53 úderů A0–G#2 a C4–C8 s pravdou v `truth.json`),
 syntetické testy detekce (nasazení ±5 ms, slité tóny, thump, kliky), dozvuku,
-I/O 24 bit a idempotence stavby banky. Fixtures regeneruje
+I/O 24 bit, idempotence stavby banky a GUI (profily, offscreen smoke test
+okna). Fixtures regeneruje
 `tools/make_fixtures.py <raw-dir> <truth.json> tests/fixtures/pitch`.
 
 Struktura balíčku `sample_slicer/`: `io` (WAV), `envelope` (obálka, dno,
 sklon), `detect` (segmenty), `tail` (dozvuk), `slicing` (generický střih),
 `pitch` (výška), `notes` (názvy not, pravda), `tuning` (ladicí křivka,
 přiřazení), `analyze` (dry-run), `bank` (stavba banky), `cli`.
+GUI je zvlášť v `slicergui/` (`profiles`, `worker`, `app`).
 
 ## GUI
 

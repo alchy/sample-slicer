@@ -7,7 +7,7 @@ from . import slicing
 
 
 def add_detect_args(parser: argparse.ArgumentParser) -> None:
-    g = parser.add_argument_group("detekce (výchozí hodnoty ze specu)")
+    g = parser.add_argument_group("detekce (význam a výchozí hodnoty: README, docs/algorithm.md)")
     for f in fields(DetectParams):
         g.add_argument("--" + f.name.replace("_", "-"), type=float, default=None, metavar="X",
                        help=f"výchozí {getattr(DetectParams(), f.name)}")
