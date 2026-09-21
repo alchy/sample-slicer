@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(folders)
 
         # parametry
-        params = QGroupBox("Parametry (ostatní prahy mají výchozí hodnoty ze specu; CLI --help je umí přepsat)")
+        params = QGroupBox("Parametry (ostatní prahy mají výchozí hodnoty, viz docs/algorithm.md; CLI --help je umí přepsat)")
         pl = QGridLayout(params)
         self.spins = {}
         for i, (key, label, lo, hi, step, unit, tip) in enumerate((

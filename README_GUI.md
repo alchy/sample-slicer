@@ -25,7 +25,7 @@ sample-slicer-gui                      # nebo: python -m slicergui
 4. **Parametry** – jen ty, které se v praxi ladí: Konec dozvuku (dBFS),
    Umělý dozvuk (s), Max délka samplu (s), Pre-roll (ms), Fade-in (ms) a
    přepínač *Doladit na temperované ladění*. Ostatní prahy detekce mají
-   výchozí hodnoty ze specu; kdo je potřebuje, použije CLI (`--help`).
+   výchozí hodnoty (viz `docs/algorithm.md`); kdo je potřebuje, použije CLI (`--help`).
 5. **Akce** – *Analyzovat (dry-run)* vypíše tabulku úderů (čas, délka, peak,
    nota, centy, confidence, verdikt) do logu a nic nezapisuje; *Sestavit banku*
    spustí celý workflow; *Otevřít report* otevře `report.md` z Original.
