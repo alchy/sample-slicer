@@ -10,6 +10,8 @@ class DetectParams:
     hop_ms: float = 5.0
     onset_rise_db: float = 20.0
     onset_rise_ms: float = 30.0
+    onset_look_ms: float = 200.0
+    onset_peak_within_db: float = 10.0
     preroll_ms: float = 5.0
     split_rise_db: float = 12.0
     split_peak_within_db: float = 20.0
@@ -35,18 +37,21 @@ class Segment:
     end_reason: str
 
 
-def _onset_frame(env: np.ndarray, i_rise: int, i: int) -> int:
-    """Nasazení = první rámec v (i_rise, i], který je zřetelně (6 dB) nad úrovní před skokem.
-    Zpětné hledání minima v šumu by skákalo; pre-roll 5 ms doplní zbytek."""
-    pre = env[i_rise]
-    for j in range(i_rise + 1, i + 1):
-        if env[j] > pre + 6.0:
+def _onset_frame(env: np.ndarray, i_rise: int, look: int, within_db: float) -> int:
+    """Nasazení = první rámec od i_rise, který se dostane do `within_db` od vrcholu následujících
+    `look` rámců — tedy skutečný attack struny. Mechanika klávesy zní 40–60 ms PŘED strunou
+    o 20–30 dB slaběji; brát ji za začátek by přidalo latenci a posunulo analýzu výšky do šumu."""
+    stop = min(len(env), i_rise + look)
+    peak = env[i_rise:stop].max()
+    for j in range(i_rise, stop):
+        if env[j] >= peak - within_db:
             return j
-    return i
+    return i_rise
 
 
 def find_onsets(env: np.ndarray, hop_s: float, p: DetectParams) -> list[int]:
     rise_frames = max(1, int(round(p.onset_rise_ms / 1000.0 / hop_s)))
+    look = max(1, int(round(p.onset_look_ms / 1000.0 / hop_s)))
     n = len(env)
     onsets: list[int] = []
     i = rise_frames
@@ -56,19 +61,23 @@ def find_onsets(env: np.ndarray, hop_s: float, p: DetectParams) -> list[int]:
         if active_peak is None:
             floor = local_floor_db(env, i - rise_frames, hop_s)
             if rise > p.onset_rise_db and env[i] > floor + p.onset_rise_db:
-                onsets.append(_onset_frame(env, i - rise_frames, i))
+                onsets.append(_onset_frame(env, i - rise_frames, look, p.onset_peak_within_db))
                 active_peak = env[i]
                 i += rise_frames
                 continue
         else:
             active_peak = max(active_peak, env[i])
             if rise > p.split_rise_db:
-                # kandidát na nový úder uvnitř aktivního úseku
+                # kandidát na nový úder uvnitř aktivního úseku: musí být transient (rychlý náběh),
+                # převýšit nedávné maximum obálky (zázněje strun se houpou pod ním), být do
+                # split_peak_within_db od vrcholu předchozího úderu a držet aspoň split_min_len_s
                 look = int(round(p.split_min_len_s / hop_s))
                 new_peak = env[i: i + look].max() if i + 1 < n else env[i]
+                recent_max = env[max(0, i - look): i - rise_frames].max() if i - rise_frames > 0 else env[i - rise_frames]
                 sustained = (i + look <= n) and (env[i: i + look].min() > env[i - rise_frames] - 3.0)
-                if new_peak >= active_peak - p.split_peak_within_db and sustained:
-                    onsets.append(_onset_frame(env, i - rise_frames, i))
+                if (new_peak >= active_peak - p.split_peak_within_db and new_peak > recent_max + 3.0
+                        and sustained):
+                    onsets.append(_onset_frame(env, i - rise_frames, look, p.onset_peak_within_db))
                     active_peak = new_peak
                     i += rise_frames
                     continue
@@ -80,24 +89,29 @@ def find_onsets(env: np.ndarray, hop_s: float, p: DetectParams) -> list[int]:
     return onsets
 
 
-def _segment_end(env: np.ndarray, env_s: np.ndarray, i_onset: int, i_limit: int, hop_s: float, p: DetectParams):
-    """Vrátí (i_end, reason, slope). Konec podle úrovně čte vyhlazenou obálku env_s; artefakt
-    uvolnění (krátký thump) hledá v surové obálce env proti regresní čáře z env_s.
-    i_limit = začátek dalšího úderu nebo len."""
+def _segment_end(env: np.ndarray, env_s: np.ndarray, i_onset: int, i_limit: int, hop_s: float,
+                 p: DetectParams, floor_db: float):
+    """Vrátí (i_end, reason, slope). Konec podle úrovně (od vrcholu) čte vyhlazenou obálku env_s;
+    efektivní úroveň konce = max(end_level_db, lokální dno + 6 dB), aby sample nevlekl šum místnosti.
+    Artefakt uvolnění (krátký thump, až po artifact_after_s) hledá v surové obálce env proti
+    regresní čáře z env_s. i_limit = začátek dalšího úderu nebo len."""
     i_max = min(i_limit, i_onset + int(round(p.max_len_s / hop_s)))
     i_peak = i_onset + int(np.argmax(env_s[i_onset: i_max])) if i_max > i_onset else i_onset
     after = i_onset + int(round(p.artifact_after_s / hop_s))
     win = int(round(p.artifact_window_s / hop_s))
-    i = max(i_peak + 1, after)
+    rise_frames = max(1, int(round(p.onset_rise_ms / 1000.0 / hop_s)))
+    end_level = max(p.end_level_db, floor_db + 6.0)
+    i = i_peak + 1
     while i < i_max:
-        if env_s[i] < p.end_level_db:
+        if env_s[i] < end_level:
             return i, "level", decay_slope_db_s(env_s, i, hop_s, p.artifact_window_s)
-        if i - after >= win:
+        if i >= after and i - after >= win:
             seg = env_s[i - win: i]
             t = np.arange(win) * hop_s
             slope, icpt = np.polyfit(t, seg, 1)
             predicted = icpt + slope * win * hop_s
-            if env[i] - predicted > p.artifact_rise_db:
+            fast = env[i] - env[i - rise_frames] > p.artifact_rise_db     # transient, ne pomalý zázněj
+            if fast and env[i] - predicted > p.artifact_rise_db:
                 back = int(round(0.1 / hop_s))
                 j = i - back + int(np.argmin(env_s[i - back: i])) if back > 0 else i
                 return j, "artifact", float(slope)
@@ -118,21 +132,23 @@ def detect_segments(mono: np.ndarray, sr: int, p: DetectParams = DetectParams())
     onsets = find_onsets(env, hop_s, p)
     preroll = int(round(p.preroll_ms / 1000.0 * sr))
     segs: list[Segment] = []
+    short: list[Segment] = []
     for k, i_on in enumerate(onsets):
         i_limit = onsets[k + 1] if k + 1 < len(onsets) else len(env_s)
-        i_end, reason, slope = _segment_end(env, env_s, i_on, i_limit, hop_s, p)
+        floor = local_floor_db(env, i_on, hop_s)
+        i_end, reason, slope = _segment_end(env, env_s, i_on, i_limit, hop_s, p, floor)
         onset = i_on * hop
         start = max(0, onset - preroll)
         end = min(len(mono), i_end * hop)
         if reason == "next_onset":
             end = min(end, max(onset, i_limit * hop - preroll))   # nesmí sahat do pre-rollu dalšího úderu
-        if (end - onset) / sr < p.min_len_s:
-            continue
         peak = float(env[i_on: max(i_on + 1, i_end)].max())
-        segs.append(Segment(start, onset, end, peak, local_floor_db(env, i_on, hop_s), slope, reason))
+        seg = Segment(start, onset, end, peak, floor, slope, reason)
+        # příliš krátký úsek = klik/šum, ne tón
+        (short if (end - onset) / sr < p.min_len_s else segs).append(seg)
     if not segs:
-        return [], []
+        return [], short
     loudest = max(s.peak_db for s in segs)
     accepted = [s for s in segs if s.peak_db >= loudest - p.click_below_peak_db]
-    rejected = [s for s in segs if s.peak_db < loudest - p.click_below_peak_db]
-    return accepted, rejected
+    rejected = [s for s in segs if s.peak_db < loudest - p.click_below_peak_db] + short
+    return accepted, sorted(rejected, key=lambda s: s.onset)
