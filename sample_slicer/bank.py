@@ -165,7 +165,8 @@ def build_bank(src_dir, original_dir, out_dir, params: DetectParams, tail_s: flo
             entries[str(row.index)] = {"orig": f"{mdir}/{orig_name}", "out": f"{mdir}/{out_name}", "midi": a.midi,
                                        "cents_et": round(a.cents_et, 1), "cents_curve": round(a.cents_curve, 1),
                                        "confidence": round(row.pitch.confidence, 3) if row.pitch else 0.0,
-                                       "t_s": round(row.t_s, 3), "reason": a.reason}
+                                       "t_s": round(row.t_s, 3), "dur_s": round(row.dur_s, 2),
+                                       "peak_db": round(row.peak_db, 1), "end": row.end_reason, "reason": a.reason}
             written += 1
         index.set_source(wav.name, md5, phash, entries)
         index.data["resampler"] = engine
@@ -177,9 +178,23 @@ def build_bank(src_dir, original_dir, out_dir, params: DetectParams, tail_s: flo
 
 
 def write_report(original_dir, rows: list[HitRow], index: BankIndex) -> Path:
-    lines = ["# Report stavby banky", "", "## Údery (tento běh)", "", "```", format_rows(rows), "```", ""]
+    """report.md: tabulka všech úderů z indexu (celá banka, ne jen tento běh), odmítnuté z tohoto
+    běhu, vrstvy na notu, díry na klaviatuře, ladění."""
+    lines = ["# Report stavby banky", "", "## Údery v bance (dle indexu)", "",
+             "| zdroj | # | čas [s] | délka [s] | peak dBFS | konec | nota | c/ET | c/křivka | conf | verdikt |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for src in sorted(index.data["sources"]):
+        ent = index.data["sources"][src]["entries"]
+        for idx in sorted(ent, key=int):
+            e = ent[idx]
+            lines.append(f"| {src} | {idx} | {e['t_s']:.2f} | {e.get('dur_s', 0):.1f} | {e.get('peak_db', 0):.1f} | "
+                         f"{e.get('end', '')} | {midi_to_name(e['midi'])} | {e['cents_et']:+.0f} | {e['cents_curve']:+.0f} | "
+                         f"{e['confidence']:.2f} | {e['reason']} |")
     rej = [r for r in rows if r.assignment.midi is None]
-    lines += ["## Odmítnuté", ""] + ([f"- {r.source} #{r.index} @ {r.t_s:.2f}s: {r.assignment.reason}" for r in rej] or ["- žádné"]) + [""]
+    lines += ["", "## Odmítnuté (tento běh)", ""] + (
+        [f"- {r.source} #{r.index} @ {r.t_s:.2f}s: {r.assignment.reason}"
+         + (f" (změřeno {r.pitch.midi:.2f}, conf {r.pitch.confidence:.2f})" if r.pitch else "") for r in rej]
+        or ["- žádné"]) + [""]
     layers: dict[int, int] = {}
     for s in index.data["sources"].values():
         for e in s["entries"].values():
