@@ -34,6 +34,8 @@ def render_segment(audio: np.ndarray, sr: int, seg: Segment, tail_s: float = 2.0
     """Vyřízne audio[seg.start : seg.end + tail_s] (2D), fade-in, přirozený dozvuk; za EOF doplní nuly."""
     n_tail = int(round(tail_s * sr))
     stop = seg.end + n_tail
+    if seg.limit > 0:
+        stop = min(stop, seg.limit)              # dozvuk nikdy nesahá za nasazení dalšího tónu
     piece = audio[seg.start: min(stop, len(audio))].astype(np.float32, copy=True)
     if stop > len(audio):
         piece = np.concatenate([piece, np.zeros((stop - len(audio), audio.shape[1]), dtype=np.float32)])

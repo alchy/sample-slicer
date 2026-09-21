@@ -10,6 +10,7 @@ from .notes import midi_to_name
 from .tuning import Assignment, TuningParams
 
 INDEX_NAME = ".slicer-index.json"
+TOOL_VERSION = 2   # zvýšit při změně detekce/renderu → build přegeneruje všechny zdroje
 
 
 def md5_16(path) -> str:
@@ -56,7 +57,7 @@ def convert_48k16(src_wav, dst_wav, retune_cents: float = 0.0, src_sr: int | Non
 
 
 def params_hash(params: DetectParams, tail_s: float, tuning: TuningParams, retune: bool) -> str:
-    return hashlib.sha1(repr((asdict(params), tail_s, asdict(tuning), retune)).encode()).hexdigest()[:12]
+    return hashlib.sha1(repr((TOOL_VERSION, asdict(params), tail_s, asdict(tuning), retune)).encode()).hexdigest()[:12]
 
 
 class BankIndex:

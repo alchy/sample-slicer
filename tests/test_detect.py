@@ -55,3 +55,22 @@ def test_clicks_rejected():
     segs, rej = detect_segments(c, SR)
     assert len(segs) == 1 and len(rej) == 1
     assert rej[0].peak_db < segs[0].peak_db - 25
+
+def test_next_note_close_after_decay_ends_at_level_not_next_onset():
+    # tón dozní pod -60 dB, další úder přijde až po 6 s: konec musí být "level", ne "next_onset"
+    c = make_canvas(12)
+    place(c, piano_note(89, SR, 2.0, peak=0.3, decay_db_s=-40), 1.0, SR)
+    place(c, piano_note(91, SR, 2.0, peak=0.5, decay_db_s=-40), 7.0, SR)
+    segs, rej = detect_segments(c, SR)
+    assert [s.end_reason for s in segs] == ["level", "level"]
+    assert (segs[0].end - segs[0].onset) / SR < 3.0
+    assert segs[0].limit <= segs[1].start and len(rej) == 0     # žádný duplicitní onset z náběhu
+
+def test_render_tail_never_crosses_next_onset():
+    from sample_slicer.tail import render_segment
+    c = make_canvas(6)
+    place(c, piano_note(60, SR, 1.5, decay_db_s=-40), 1.0, SR)
+    place(c, piano_note(64, SR, 1.5, decay_db_s=-40), 3.0, SR)
+    segs, _ = detect_segments(c, SR)
+    out = render_segment(c[:, None], SR, segs[0], tail_s=5.0)
+    assert segs[0].start + len(out) <= segs[1].start

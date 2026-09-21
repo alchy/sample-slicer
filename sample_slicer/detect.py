@@ -35,6 +35,7 @@ class Segment:
     floor_db: float
     slope_db_s: float
     end_reason: str
+    limit: int = 0          # index, za který render nikdy nesahá (nasazení dalšího úderu, nebo konec audia)
 
 
 def _onset_frame(env: np.ndarray, i_rise: int, look: int, within_db: float) -> int:
@@ -67,7 +68,7 @@ def find_onsets(env: np.ndarray, hop_s: float, p: DetectParams) -> list[int]:
                 continue
         else:
             active_peak = max(active_peak, env[i])
-            if rise > p.split_rise_db:
+            if rise > p.split_rise_db and i - onsets[-1] > look:   # refrakterní doba: attack sám o sobě není nový úder
                 # kandidát na nový úder uvnitř aktivního úseku: musí být transient (rychlý náběh),
                 # převýšit nedávné maximum obálky (zázněje strun se houpou pod ním), být do
                 # split_peak_within_db od vrcholu předchozího úderu a držet aspoň split_min_len_s
@@ -96,7 +97,9 @@ def _segment_end(env: np.ndarray, env_s: np.ndarray, i_onset: int, i_limit: int,
     Artefakt uvolnění (krátký thump, až po artifact_after_s) hledá v surové obálce env proti
     regresní čáře z env_s. i_limit = začátek dalšího úderu nebo len."""
     i_max = min(i_limit, i_onset + int(round(p.max_len_s / hop_s)))
-    i_peak = i_onset + int(np.argmax(env_s[i_onset: i_max])) if i_max > i_onset else i_onset
+    # vrchol jen v okně nasazení (attack klavíru < 50 ms); přes celý úsek by vyhrál náběh dalšího tónu
+    look = max(1, int(round(p.onset_look_ms / 1000.0 / hop_s)))
+    i_peak = i_onset + int(np.argmax(env_s[i_onset: min(i_max, i_onset + look)])) if i_max > i_onset else i_onset
     after = i_onset + int(round(p.artifact_after_s / hop_s))
     win = int(round(p.artifact_window_s / hop_s))
     rise_frames = max(1, int(round(p.onset_rise_ms / 1000.0 / hop_s)))
@@ -143,7 +146,8 @@ def detect_segments(mono: np.ndarray, sr: int, p: DetectParams = DetectParams())
         if reason == "next_onset":
             end = min(end, max(onset, i_limit * hop - preroll))   # nesmí sahat do pre-rollu dalšího úderu
         peak = float(env[i_on: max(i_on + 1, i_end)].max())
-        seg = Segment(start, onset, end, peak, floor, slope, reason)
+        limit = min(len(mono), max(onset, i_limit * hop - preroll)) if k + 1 < len(onsets) else 0   # 0 = bez limitu (EOF se doplní nulami)
+        seg = Segment(start, onset, end, peak, floor, slope, reason, limit)
         # příliš krátký úsek = klik/šum, ne tón
         (short if (end - onset) / sr < p.min_len_s else segs).append(seg)
     if not segs:
