@@ -22,37 +22,22 @@ Program pro automatické rozdělení WAV souborů na jednotlivé audio segmenty 
 
 ## Použití
 
-### Základní příkaz
+Instalace (Python ≥ 3.11):
+
 ```bash
-python slicer.py --input-dir vstupni_adresar --output-dir vystupni_adresar
+python3.11 -m venv .venv && .venv/bin/pip install -e .
 ```
 
-### Kompletní příklad s parametry
+Generický střih (adresář WAV → ořezané údery s přirozeným dozvukem):
+
 ```bash
-python slicer.py --input-dir samples_in --output-dir samples_out_sliced --threshold_db -45 --min_length 3 --fade_ms 5
+sample-slicer slice <vstupni_adresar> <vystupni_adresar>
 ```
 
-### Preview mód (testování bez zpracování)
-```bash
-python slicer.py --input-dir samples_in --output-dir samples_out --preview
-```
-
-## Parametry
-
-### Povinné parametry
-- `--input-dir`: Cesta k adresáři obsahujícímu vstupní WAV soubory
-- `--output-dir`: Cesta k adresáři pro uložení rozdělených segmentů
-
-### Volitelné parametry
-- `--threshold_db`: Práh detekce hlasitosti v dB (výchozí: -45 dB)
-- `--min_length`: Minimální délka segmentu v sekundách (výchozí: 3.0)
-- `--min_length_after_trim`: Minimální délka segmentu po ořezání ticha v sekundách (výchozí: 0.5)
-- `--trim_threshold_offset`: Offset pro práh ořezávání vzhledem k detekčnímu prahu v dB (výchozí: +10)
-- `--fade_ms`: Délka fade-in/fade-out v milisekundách (výchozí: 5.0)
-- `--no_fades`: Zakáže fade-in/fade-out (může způsobit kliknutí)
-- `--resume`: Přeskočí již existující výstupní soubory
-- `--preview`: Preview mód - zobrazí co by se stalo bez skutečného zpracování
-- `--log_level`: Úroveň logování - DEBUG, INFO, WARNING, ERROR (výchozí: INFO)
+Zpětně kompatibilní vstup `python slicer.py --input-dir A --output-dir B` funguje
+dál; staré přepínače prahů se ignorují (nový algoritmus pracuje s lokálním
+šumovým dnem, viz spec `docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`).
+Všechny parametry detekce vypíše `sample-slicer slice --help`.
 
 ## Požadavky
 
@@ -103,34 +88,9 @@ Rozdělené segmenty jsou uloženy s názvem ve formátu:
 
 ## Algoritmus zpracování
 
-### 1. Validace a analýza vstupů
-- **Detekce formátu**: Automatická identifikace vzorkovací frekvence, počtu kanálů a bit depth
-- **Validace parametrů**: Kontrola platnosti vstupních hodnot
-- **Statistiky**: Sledování formátů a celkového zpracování
-
-### 2. Detekce segmentů
-- **RMS analýza**: Výpočet efektivní hodnoty (RMS) v klouzavých oknech adaptivních podle vzorkovací frekvence
-- **Práh detekce**: Identifikace aktivních částí nad definovaným prahem v dB
-- **Spojování**: Spojení blízkých aktivních oblastí do souvislých segmentů
-
-### 3. Preprocessing
-- **DC offset removal**: Odstranění stejnosměrné složky pro každý kanál samostatně
-- **Mono konverze pro analýzu**: Převod stereo na mono pouze pro detekci (zachování stereo ve výstupu)
-- **Float32 konverze**: Přesné výpočty bez přetečení s návratem do původního formátu
-
-### 4. Ořezávání segmentů
-- **Konfigurovatelný práh**: Práh pro ořezávání je nastavitelný offset nad detekčním prahem (výchozí +10 dB)
-- **Adaptivní okno**: Velikost okna pro ořezávání se přizpůsobuje vzorkovací frekvenci
-- **Minimální délka**: Filtrování příliš krátkých segmentů po ořezání (výchozí < 0.5s)
-
-### 5. Post-processing
-- **Fade-in/fade-out**: Aplikace krátkých fade přechodů (výchozí 5ms) pro odstranění kliknutí
-- **Zachování kvality**: Výstup ve stejném formátu jako vstup (bit depth, vzorkovací frekvence, kanály)
-
-### 6. Výstup
-- **Informativní názvy**: Obsahují časové informace a formát
-- **Unikátní názvy**: Automatické číslování při kolizi názvů souborů
-- **Statistiky**: Detailní report o zpracování
+Popis detekce (nasazení, dělení slitých tónů, konec dozvuku, artefakt uvolnění
+klávesy, přirozený dozvuk do nuly) i odhadu výšky je ve specu
+`docs/superpowers/specs/2026-09-21-bank-pipeline-design.md`.
 
 ## Příklady použití
 
